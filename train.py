@@ -1,82 +1,90 @@
-from typing import Tuple
-import math
 
 import torch
 import torch.nn as nn
+import torch.optim as optim
+import torchvision
+import torchvision.transforms as transforms
+import torchvision.datasets as datasets
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from utils import set_weights
+from models import Generator, Discriminator
 
-from models import Discriminator, Generator
-from utils import generate_even_data
+# Initializing hyperparameters
+epochs = 3 # CHANGE HERE
+lr = 2e-4  
+batch_size = 128
+img_size = 64
+img_channels = 1 # CHANGE THIS DEPENDING ON CHANNELS ON IMAGE
+z_dim = 100
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+discriminator_size = 64
+generator_size = 64
 
+# Tensorboard initialization
+noise_vector = torch.randn(16, z_dim, 1, 1).to(device)
+fake_img_summary = SummaryWriter(f"logs")
+step = 0
 
-def train(max_int: int = 128, batch_size: int = 16, training_steps: int = 500):
-    input_length = int(math.log(max_int, 2)) #beskriver binærlengden på 128
+# Creating transforms
+transforms = transforms.Compose(
+    [
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5]),
+    ]
+)
 
-    # Models: outputer to modeller med ant. nevroner lik som lengden på makstallet i binærform.
-    generator = Generator(input_length) 
-    discriminator = Discriminator(input_length)
+#Downloading the FashionMNIST dataset and setting up the dataloader
+dataset = datasets.FashionMNIST(root="dataset/", train=True, transform=transforms,
+                       download=True)
+dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    # Optimizers. finner vektene/parameterene med min.loss, med learning rate =0.001
-    generator_optimizer = torch.optim.Adam(generator.parameters(), lr=0.001)
-    discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=0.001)
+# Initializing our two models
+discriminator = Discriminator(img_channels, discriminator_size).to(device)
+generator = Generator(z_dim, img_channels, generator_size).to(device)
+set_weights(generator)
+set_weights(discriminator)
 
-    # loss
-    loss = nn.BCELoss()
+# Sending our model parameters to the Adam optimizer
+disc_optim = optim.Adam(discriminator.parameters(), lr=lr, betas=(0.5, 0.999))
+gen_optim = optim.Adam(generator.parameters(), lr=lr, betas=(0.5, 0.999))
+loss_function = nn.BCELoss()
+discriminator.train()
+generator.train()
 
-    for i in range(training_steps):
-        # zero the gradients on each iteration
-        generator_optimizer.zero_grad()
+for epoch in range(epochs):
+    for batch_idx, (real_image, _ ) in enumerate(dataloader):
+        real_image = real_image.to(device)
+        noise = torch.randn(batch_size, z_dim, 1, 1).to(device)
+        fake_image = generator(noise)
 
-        # Create noisy input for generator
-        # Need float type instead of int
-        #genererer en tensor med tall mellom 0 og 2, der size beskriver
-        #tensorens arkitetur. her da en liste med lister. der lengden av denne er batch size,
-        #og hver listeverdi er en annen liste med tall mellom 0 og 2.
-        # betyr da en lsite med lsite
-        noise = torch.randint(0, 2, size=(batch_size, input_length)).float()
-        generated_data = generator(noise) #en batch med noise inn i Generator, og output: sigmoid i etelerannet
+        # Discriminator training
+        disc_image = discriminator(real_image).reshape(-1)
+        disc_image_loss = loss_function(disc_image, torch.ones_like(disc_image))
+        disc_fake_img = discriminator(fake_image.detach()).reshape(-1)
+        disc_fake_loss = loss_function(disc_fake_img, torch.zeros_like(disc_fake_img))
+        disc_loss = (disc_image_loss + disc_fake_loss) / 2 # KANSKJE FJERNE Å DELE PÅ TO
+        discriminator.zero_grad()
+        disc_loss.backward()
+        disc_optim.step()
 
-        # her instansierer vi faktisk
-        #true_labels: liste med 1ere
-        #true_data: liste med selve even numbersene
-        true_labels, true_data = generate_even_data(max_int, batch_size=batch_size)
-        true_labels = torch.tensor(true_labels).float()
-        true_data = torch.tensor(true_data).float()
+        # Generator training
+        disc_fake_image_after = discriminator(fake_image).reshape(-1)
+        gen_loss = loss_function(disc_fake_image_after, torch.ones_like(disc_fake_image_after))
+        generator.zero_grad()
+        gen_loss.backward()
+        gen_optim.step()
 
-        # Train the generator
-        # We invert the labels here and don't train the discriminator because we want the generator
-        # to make things the discriminator classifies as true.
+        # Print losses occasionally and print to tensorboard
+        if batch_idx % 100 == 0:
+            print(f"Epoch [{epoch}/{epochs}] Batch {batch_idx}/{len(dataloader)}")
 
-        #1. discriminator tar inn generator random noise. vektene dårlige i starten, får en output
-        #2, loss til discriminator sin out med random noise ift. true labels
-        #3.og4. oppdater vektene tilk generator ift. discriminator sin loss
-        #hvis discriminator sin loss er liten, nærme 0, betyr at gjettet label er nærme true label,
-        #og dermed har den gjort feil, og det ønsker jo generatoren, derfor ønsker vi å oppdatere
-        #dens optimizer med et lite tall
+            with torch.no_grad():
+                fake_image = generator(noise_vector)
+                img_grid_fake = torchvision.utils.make_grid(
+                    fake_image[:16], normalize=True
+                )
+                fake_img_summary.add_image("Fake", img_grid_fake, global_step=step)
 
-        #hvis discriminator sin loss er stor, nærme 1, betyr det at den har gjettet feil fra true label
-        #og dermed ønsker vi å oppdatere generator så mye som mulig, og oppdaterer med dens tall
-        generator_discriminator_out = discriminator(generated_data) #in: sigmoid gjort noe med noise. out: gir discriminator sin verdi til random noise.
-        generator_loss = loss(generator_discriminator_out, true_labels) #her begynner backwardpropogation. finner ut loss i discriminator med noisen ift. true labels.
-        generator_loss.backward()
-        generator_optimizer.step() #her oppdateres selve modellen
-
-        # Train the discriminator on the true/generated data
-        discriminator_optimizer.zero_grad()
-        true_discriminator_out = discriminator(true_data)
-        true_discriminator_loss = loss(true_discriminator_out, true_labels)
-
-        # add .detach() here think about this
-        generator_discriminator_out = discriminator(generated_data.detach())
-        generator_discriminator_loss = loss(generator_discriminator_out, torch.zeros(batch_size))
-        discriminator_loss = (true_discriminator_loss + generator_discriminator_loss) / 2
-        discriminator_loss.backward()
-        discriminator_optimizer.step()
-
-
-
-
-    return generator, discriminator
-
-
-if __name__ == "__main__":
-    train()
+            step += 1
