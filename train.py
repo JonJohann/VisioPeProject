@@ -7,6 +7,9 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import ImageGrid
+import numpy as np
 from utils import set_weights
 from models import Generator, Discriminator
 
@@ -20,11 +23,6 @@ z_dim = 100
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 discriminator_size = 64
 generator_size = 64
-
-# Tensorboard initialization
-noise_vector = torch.randn(16, z_dim, 1, 1).to(device)
-fake_img_summary = SummaryWriter(f"logs")
-step = 0
 
 # Creating transforms
 transforms = transforms.Compose(
@@ -54,7 +52,7 @@ discriminator.train()
 generator.train()
 
 for epoch in range(epochs):
-    for batch_idx, (real_image, _ ) in enumerate(dataloader):
+    for batch_index, (real_image, _ ) in enumerate(dataloader):
         real_image = real_image.to(device)
         noise = torch.randn(batch_size, z_dim, 1, 1).to(device)
         fake_image = generator(noise)
@@ -76,15 +74,27 @@ for epoch in range(epochs):
         gen_loss.backward()
         gen_optim.step()
 
-        # Print losses occasionally and print to tensorboard
-        if batch_idx % 100 == 0:
-            print(f"Epoch [{epoch}/{epochs}] Batch {batch_idx}/{len(dataloader)}")
+        if batch_index % 140 == 0:
+          print(f'Epoch: [{epoch}/{epochs}] | Batch: [{batch_index}/{len(dataloader)}]')
 
-            with torch.no_grad():
-                fake_image = generator(noise_vector)
-                img_grid_fake = torchvision.utils.make_grid(
-                    fake_image[:16], normalize=True
-                )
-                fake_img_summary.add_image("Fake", img_grid_fake, global_step=step)
+# Visualizing our results
 
-            step += 1
+def show_images(interpolated: bool):
+  n = 30
+  interpolated_noise_vectors = torch.randn(n, z_dim, 1, 1)
+  images = generator(interpolated_noise_vectors.to(device))
+  if interpolated:
+    first_noise_vector = torch.tensor(interpolated_noise_vectors[0])
+    second_noise_vector = torch.tensor(interpolated_noise_vectors[n-1])
+    for index, vector in enumerate(interpolated_noise_vectors):
+      interpolated_noise_vectors[index] = first_noise_vector*(((n-1)-index)/(n-1)) + second_noise_vector*(index/(n-1))
+  images = generator(interpolated_noise_vectors.to(device))
+  fig = plt.figure(figsize=(4., 4.))
+  grid = ImageGrid(fig, 111, nrows_ncols=(5, 6), axes_pad=0.1)
+
+  for ax, im in zip(grid, images):
+      ax.imshow(im.cpu().detach().numpy()[0], cmap="gray")
+
+  plt.show()
+
+show_images(True)
