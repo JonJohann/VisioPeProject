@@ -96,5 +96,8 @@ def show_images(interpolated: bool):
 
   plt.show()
 
-# Change to false to show a random selection of 30 images
+print("A random selection of generated images")
+show_images(False)
+
+print("An interpolated selection of generated images")
 show_images(True)
