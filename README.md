@@ -8,6 +8,9 @@ This generative adverserial model is inspired by the videos created by Aladdin P
 * Matplotlib
 * Numpy
 
+## How to run
+Simply run `python3 train.py`
+
 ## Google Colab version 
 Click the following link for a Google Colab version. It is highly recommended to use a GPU/TPU enhanced runtime.
 https://colab.research.google.com/drive/15isIg7IobTkUkRWhJuKior6dMFzm6wqC?usp=sharing 
