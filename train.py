@@ -14,11 +14,11 @@ from utils import set_weights
 from models import Generator, Discriminator
 
 # Initializing hyperparameters
-epochs = 3 # CHANGE HERE
-lr = 2e-4  
+epochs = 5
+lr = 1e-4
 batch_size = 128
 img_size = 64
-img_channels = 1 # CHANGE THIS DEPENDING ON CHANNELS ON IMAGE
+img_channels = 1
 z_dim = 100
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 discriminator_size = 64
@@ -62,7 +62,7 @@ for epoch in range(epochs):
         disc_image_loss = loss_function(disc_image, torch.ones_like(disc_image))
         disc_fake_img = discriminator(fake_image.detach()).reshape(-1)
         disc_fake_loss = loss_function(disc_fake_img, torch.zeros_like(disc_fake_img))
-        disc_loss = (disc_image_loss + disc_fake_loss) / 2 # KANSKJE FJERNE Å DELE PÅ TO
+        disc_loss = (disc_image_loss + disc_fake_loss) / 2 
         discriminator.zero_grad()
         disc_loss.backward()
         disc_optim.step()
@@ -78,7 +78,6 @@ for epoch in range(epochs):
           print(f'Epoch: [{epoch}/{epochs}] | Batch: [{batch_index}/{len(dataloader)}]')
 
 # Visualizing our results
-
 def show_images(interpolated: bool):
   n = 30
   interpolated_noise_vectors = torch.randn(n, z_dim, 1, 1)
@@ -97,4 +96,5 @@ def show_images(interpolated: bool):
 
   plt.show()
 
+# Change to false to show a random selection of 30 images
 show_images(True)
